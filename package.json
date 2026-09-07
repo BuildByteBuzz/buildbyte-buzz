@@ -1,0 +1,1 @@
+{"name":"buildbyte-buzz","private":true,"version":"0.1.0","scripts":{"dev":"wrangler pages dev .","deploy":"wrangler pages deploy . --project-name=buildbyte-buzz"},"devDependencies":{"wrangler":"^4.35.0"}}
