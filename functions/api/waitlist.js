@@ -1,1 +1,91 @@
-const hits=new Map(),WINDOW=60000,LIMIT=8;const json=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'}});function limited(ip){const n=Date.now(),r=hits.get(ip);if(!r||n-r.t>WINDOW){hits.set(ip,{t:n,c:1});return false}r.c++;return r.c>LIMIT}export async function onRequestPost({request,env}){if(!env.LOOPS_API_KEY)return json({success:false,message:'Waitlist is temporarily unavailable.'},503);if(limited(request.headers.get('CF-Connecting-IP')||'unknown'))return json({success:false,message:'Too many attempts. Try again in a minute.'},429);let b;try{b=await request.json()}catch{return json({success:false,message:'Invalid request.'},400)}if(b.website)return json({success:true});const email=typeof b.email==='string'?b.email.trim().toLowerCase():'';if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)return json({success:false,message:'Please enter a valid email.'},400);const payload={email,source:'buildbyte.buzz',subscribed:true};if(env.LOOPS_MAILING_LIST_ID)payload.mailingLists={[env.LOOPS_MAILING_LIST_ID]:true};try{const r=await fetch('https://app.loops.so/api/v1/contacts/create',{method:'POST',headers:{Authorization:`Bearer ${env.LOOPS_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});const text=await r.text();let d={};try{d=JSON.parse(text)}catch{}if(r.ok)return json({success:true,id:d.id});if(r.status===409)return json({success:true,alreadySubscribed:true});if(r.status===400)return json({success:false,message:'Please check your email address.'},400);console.error('Loops error',r.status,text.slice(0,300));return json({success:false,message:'Waitlist service is temporarily unavailable.'},502)}catch(e){console.error('Loops request failed',e);return json({success:false,message:'Waitlist service is temporarily unavailable.'},502)}}export function onRequestGet(){return json({success:false,message:'Method not allowed.'},405)}
+const WAITLIST_ENDPOINT =
+  "https://app.loops.so/api/newsletter-form/cmt46lxqh16370jxm1c3ot4d2";
+
+const waitlistForm = document.querySelector("#waitlist-form");
+const emailInput = document.querySelector("#waitlist-email");
+const submitButton = document.querySelector("#waitlist-submit");
+const errorMessage = document.querySelector("#waitlist-error");
+const waitlistContent = document.querySelector("#waitlist-content");
+const successContent = document.querySelector("#waitlist-success");
+
+function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function setError(message) {
+  errorMessage.textContent = message;
+  errorMessage.hidden = !message;
+
+  emailInput.classList.toggle("input-error", !!message);
+}
+
+waitlistForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const email = emailInput.value.trim();
+
+  if (!validateEmail(email)) {
+    setError("ENTER A VALID EMAIL ADDRESS.");
+    emailInput.focus();
+    return;
+  }
+
+  setError("");
+
+  // Loading state
+  submitButton.disabled = true;
+  submitButton.setAttribute("aria-busy", "true");
+  submitButton.innerHTML = `
+    <span class="wl-spinner" aria-hidden="true">
+      <span></span>
+      <span></span>
+      <span></span>
+    </span>
+  `;
+
+  try {
+    const response = await fetch(WAITLIST_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: `email=${encodeURIComponent(email)}`,
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      // Success screen
+      waitlistContent.hidden = true;
+      successContent.hidden = false;
+
+      successContent.innerHTML = `
+        <div class="success-icon" aria-hidden="true">✓</div>
+        <h2 class="success-title">YOU'RE ON THE LIST.</h2>
+        <p class="success-sub">
+          Transmission received. We'll contact you before launch.
+        </p>
+        <div class="success-meta">
+          <span>QUEUE POSITION: EARLY ACCESS</span>
+          <span>//</span>
+          <span>STATUS: CONFIRMED</span>
+        </div>
+      `;
+    } else {
+      throw new Error(
+        data.message || "CONNECTION FAILED. TRY AGAIN."
+      );
+    }
+  } catch (error) {
+    setError(
+      error.message || "CONNECTION FAILED. TRY AGAIN."
+    );
+
+    submitButton.disabled = false;
+    submitButton.removeAttribute("aria-busy");
+    submitButton.innerHTML = `
+      <span class="btn-text">JOIN THE WAITLIST</span>
+      <span class="btn-glow" aria-hidden="true"></span>
+    `;
+  }
+});
